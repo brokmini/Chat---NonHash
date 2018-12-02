@@ -15,6 +15,7 @@ public class Peer
         File file = new File("peers.csv");
         BufferedReader reader = new BufferedReader(new FileReader("peers.csv"));
         PrintWriter pw = new PrintWriter(new FileWriter(file, true));
+        Scanner scanner = new Scanner(System.in);
         //PrintWriter pw = new PrintWriter(new File("peers.csv"));
         String line = reader.readLine();
         //System.out.println(line);
@@ -22,7 +23,6 @@ public class Peer
         {
           //If it is the first node to join the p2p network
           System.out.println("Hey! Choose username");
-          Scanner scanner = new Scanner(System.in);
           String name=scanner.nextLine();
           pw.write(name+",9000");
           pw.close();
@@ -40,14 +40,14 @@ public class Peer
           {
                 //Do until a unique name is chosen
                 System.out.println("Choose username");
-                Scanner scanner = new Scanner(System.in);
+                //Scanner scanner = new Scanner(System.in);
                 name=scanner.nextLine();
                 BufferedReader reader1 = new BufferedReader(new FileReader("peers.csv"));
                 portNumbers="";
                 while ((line = reader1.readLine()) != null)
                 {
                   userList = userList+ line.split(",")[0]+",";
-                  portNumbers= portNumbers + line.split(",")[1]+",";
+                  portNumbers= portNumbers + line.split(",")[0]+":"+line.split(",")[1]+",";
                   if(line.split(",")[0].equals(name))
                   {
                     System.out.println("username already exists");
@@ -69,19 +69,30 @@ public class Peer
               portSet=true;
           }
 
-          //System.out.println("Port chosen "+result);
-
-          //System.out.println("Users already in the chat room are: "+userList);
           reader.close();
           pw.write("\n"+name+","+Integer.toString(listen_port));
           pw.close();
-          //System.out.println("Used port numbers ");
-          //System.out.println(portNumbers);
 
-          Integer connect_port = 9000;
           Listener  listener= new Listener(listen_port);
           listener.start();
-          connect(connect_port,listen_port);
+
+          System.out.println("Users already in the chat room are: "+userList);
+          System.out.println("How many of them do you want to connect with?");
+          int n =scanner.nextInt();
+          String catchEmpty = scanner.nextLine();
+          for (int i=0;i<n;i++)
+          {
+            System.out.println("Enter a name you want to connect with");
+            String friend = scanner.nextLine();
+            if(portNumbers.contains(friend))
+            {
+              String temp = portNumbers.split(friend+":")[1];
+              String friendPort = temp.split(",")[0];
+              Integer connect_port = Integer.parseInt(friendPort);
+              System.out.println("Your friend "+friend+ " is at "+friendPort);
+              connect(connect_port,listen_port);
+            }
+          }
         }
 
 
