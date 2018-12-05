@@ -22,9 +22,8 @@ public class Peer
         BufferedReader reader = new BufferedReader(new FileReader("peers.csv"));
         PrintWriter pw = new PrintWriter(new FileWriter(file, true));
         Scanner scanner = new Scanner(System.in);
-        //PrintWriter pw = new PrintWriter(new File("peers.csv"));
         String line = reader.readLine();
-        //System.out.println(line);
+
         if (line==null || line.equals(""))
         {
           //If it is the first node to join the p2p network
@@ -104,6 +103,9 @@ public class Peer
   PingSender ps = new PingSender();
   ps.start();
 
+  CommandListener cl = new CommandListener();
+  cl.start();
+
   } //End of Main function
 
   //**********************************************************************************************************************************************
@@ -122,8 +124,7 @@ public class Peer
         System.out.println(recdData);
 				String username = recdData.split("CONNECTED WITH")[1];
         Peer.myHash(username,socket);
-
-				PingListener p = new PingListener(socket,myPort,username);
+				PingListener p = new PingListener(socket,username);
 				p.start();
 				}
 				catch (IOException e)
@@ -136,7 +137,9 @@ public class Peer
 //This function handles the sending of Ping messages to all neighbors
 public static int pingStatus()
 {
-          String connectedUsers = Peer.readHash();
+          String connectedUsers;
+          connectedUsers = Peer.readHash();
+          if(connectedUsers.equals(""))
           System.out.println("The connected users are - "+connectedUsers);
           String[] friendList = connectedUsers.split(",");
           for(int i =0;i<friendList.length;i++)
@@ -207,6 +210,23 @@ public static String readHash()
               }
         return s;
   }
+  //**********************************************************************************************************************************************
+   public static int isFriend(String username)
+   {
+                Set<String> keys = hashtable.keySet();
+                Iterator<String> itr = keys.iterator();
+                while (itr.hasNext())
+                {
+                  // Getting Key
+                  String key = itr.next();
+                  if(key.equals(username))
+                  {
+                    return 1;
+                  }
+                }
+                return 0;
+
+    }
 } // End of class Peer
 //**********************************************************************************************************************************************
 //This thread actively listens for any nodes connecting to it
@@ -278,15 +298,13 @@ class PingSender extends Thread
 class PingListener extends Thread
 {
 				Socket socket;
-				Integer hostPort;
         String friend;
 				//Integer backupHost,my_no_files;
 
-				public PingListener(Socket s,Integer l,String friend)
+				public PingListener(Socket s,String username)
 				{
 					socket = s;
-					hostPort=l;
-          friend = friend;
+          friend = username;
 				}
 
 				public void run()
@@ -300,16 +318,11 @@ class PingListener extends Thread
 										if (ping!= null && !ping.isEmpty())
 
 												{
-															//String myList= Agent.readHash();
-															String[] pingMsg=ping.split("#");
-															/*if (pingMsg.length>1)
+
+															if(ping.contains("Hello from"))
 															{
-																//Identifies node to connect to incase of loss of neighbor
-																backupHost=Integer.parseInt(pingMsg[1]);
-															}*/
-															if(pingMsg[0].contains("Hello from"))
-															{
-                                System.out.println(pingMsg[0]);
+                                //friend = ping.split("Hello from")[1]
+                                System.out.println(ping);
 																PrintWriter pong = new PrintWriter(socket.getOutputStream(), true);
 																pong.write("HelloAck from "+Peer.name+"\n");
 																pong.flush();
@@ -321,11 +334,10 @@ class PingListener extends Thread
 									catch (Exception e)
 									{
 										//If the node to which I initially connected is dead, I maintain my presence in the sytem by reconnecting to another host
-										System.out.println("Neighbor I initially connected with has vanished");
-										//Peer.hashtable.remove(friend);
-										/*Agent.myList=Agent.readHash();
-										Reconnector r = new Reconnector(backupHost,Agent.listen_port,my_no_files);
-										r.start();
+										System.out.println(friend+ " has Disappeared");
+										Peer.hashtable.remove(friend);
+										/*Reconnector r = new Reconnector(backupHost,Agent.listen_port,my_no_files);
+										r.start();*/
 										try
 										{
 											Thread.sleep(Long.MAX_VALUE);
@@ -334,7 +346,7 @@ class PingListener extends Thread
 										{
 											System.out.println("Cdnt Sleep "+q);
 
-										}*/
+										}
 
 									}
 
@@ -377,7 +389,6 @@ class PongListener extends Thread
 							//In case a node that connected to it is dead
 							System.out.println("PongListener - "+friend +" has vanished");
 							Peer.hashtable.remove(friend);
-							//Agent.myList=Agent.readHash();
 							try
 							{
 								Thread.sleep(Long.MAX_VALUE);
@@ -392,3 +403,43 @@ class PongListener extends Thread
 			}
 }
 //****************************************************************************************************************************************************
+class CommandListener extends Thread
+{
+			//Integer myID;
+
+			public CommandListener()
+			{
+				//myID=a;
+			}
+
+			public void run()
+			{
+				while(true)
+				{
+
+					Scanner scanner = new Scanner(System.in);
+					while(scanner.hasNextLine())
+					{
+								String command=scanner.nextLine();
+
+								if(command.equals("find friend"))
+										{
+                        System.out.println("NEW USERS - ");
+                      /*BufferedReader reader2 = new BufferedReader(new FileReader("peers.csv"));
+                      String newPortNumbers=""; String newUserList="";
+                      while ((line = reader2.readLine()) != null)
+                      {
+                        if((isFriend(line.split(",")[0]))==0) //check if not one of your existing connections
+                        {
+                          newUserList = userList+ line.split(",")[0]+",";
+                          newPortNumbers= newPortNumbers + line.split(",")[0]+":"+line.split(",")[1]+",";
+                        }
+                      }
+                      System.out.println("NEW USERS - "+userList);*
+										}
+
+						}
+				}
+
+			}
+}
