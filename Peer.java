@@ -29,6 +29,7 @@ public class Peer
   static String name;
   static int myListenPort;
   static PublicKey publicKey;
+  static PrivateKey privateKey;
   public static void main(String[] args) throws IOException
   {
         File file = new File("peers.csv");
@@ -37,7 +38,7 @@ public class Peer
         Scanner scanner = new Scanner(System.in);
         String line = reader.readLine();
 
-        PrivateKey privateKey = null;
+        privateKey = null;
         publicKey = null;
         try
         {
@@ -155,7 +156,7 @@ public class Peer
   return keys;
   }
 
-private static String decryptMessage(String encryptedText, PublicKey publicKey) throws Exception
+public static String decryptMessage(String encryptedText, PublicKey publicKey) throws Exception
 {
     Cipher cipher = Cipher.getInstance("RSA");
     cipher.init(Cipher.DECRYPT_MODE, publicKey);
@@ -164,7 +165,7 @@ private static String decryptMessage(String encryptedText, PublicKey publicKey) 
 
 // Encrypt using RSA private key
 
-private static String encryptMessage(String plainText, PrivateKey privateKey) throws Exception
+public static String encryptMessage(String plainText, PrivateKey privateKey) throws Exception
 {
     Cipher cipher = Cipher.getInstance("RSA");
     cipher.init(Cipher.ENCRYPT_MODE, privateKey);
@@ -199,7 +200,6 @@ public static PublicKey retrievePublicKey(String keyString)
 				try
 				{
 				Socket socket = new Socket("localhost", port);
-        System.out.println("I have connected "+socket);
 				PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
         out.write("CONNECTED WITH "+Peer.name+" #### "+Peer.savePublicKey(Peer.publicKey)+"\n");
 				out.flush();
@@ -233,29 +233,32 @@ public static int pingStatus()
 {
           String connectedUsers;
           connectedUsers = Peer.readHash();
-          if(connectedUsers.equals(""))
-          System.out.println("The connected users are - "+connectedUsers);
-          String[] friendList = connectedUsers.split(",");
-          for(int i =0;i<friendList.length;i++)
+          if(!connectedUsers.equals(""))
           {
-            //System.out.println(fetchSocket(friendList[i]));
-            Socket t = fetchSocket(friendList[i]);
-            try
+            //System.out.println("The connected users are - "+connectedUsers);
+            String[] friendList = connectedUsers.split(",");
+            for(int i =0;i<friendList.length;i++)
             {
-                PrintWriter pOut = new PrintWriter(t.getOutputStream(), true);
-                pOut.write("Hello from "+Peer.name+"\n");
-                pOut.flush();
+              //System.out.println(fetchSocket(friendList[i]));
+              Socket t = fetchSocket(friendList[i]);
+              try
+              {
+                  PrintWriter pOut = new PrintWriter(t.getOutputStream(), true);
+                  pOut.write("Hello from "+Peer.name+"\n");
+                  pOut.flush();
 
+              }
+              catch (NullPointerException e)
+              {
+                System.out.println("PING STATUS - "+friendList[i] +" has vanished");
+                Peer.hashtable.remove(friendList[i]);
+                //myList=Agent.readHash();
+              }
+              catch (IOException e) {}
             }
-            catch (NullPointerException e)
-            {
-              System.out.println("PING STATUS - "+friendList[i] +" has vanished");
-              Peer.hashtable.remove(friendList[i]);
-              //myList=Agent.readHash();
-            }
-            catch (IOException e) {}
+            return 1;
           }
-          return 1;
+        return 0;
 }
 //**********************************************************************************************************************************************
 //function to hash neighbor details
@@ -310,6 +313,29 @@ public static String readHash()
         return s;
   }
   //**********************************************************************************************************************************************
+  //function to read neighbor details from hash
+   public static PublicKey fetchPublicKey(String username)
+   {
+                PublicKey pkey = null;
+                PeerDetails p = new PeerDetails();
+                Set<String> keys = hashtable.keySet();
+                Iterator<String> itr = keys.iterator();
+                while (itr.hasNext())
+                {
+                  // Getting Key
+                  String key = itr.next();
+
+                  String key1 = key.replaceAll(" ","");
+                  String username1=username.replaceAll(" ","");
+                  if(key1.equals(username1))
+                  {
+                    p= hashtable.get(key);
+                    pkey= p.pubKey;
+                  }
+                }
+          return pkey;
+    }
+  //**********************************************************************************************************************************************
    public static int isFriend(String username)
    {
                 Set<String> keys = hashtable.keySet();
@@ -362,7 +388,6 @@ class Listener extends Thread
 									{
 										System.out.println("Looking out for new friends...");
 										clientSocket = serverSocket.accept();
-                    System.out.println("Listened and connected "+clientSocket);
                     PongListener l=new PongListener(clientSocket);
 										l.start();
 
@@ -433,11 +458,27 @@ class PingListener extends Thread
 																pong.flush();
 															}
 
-                              if(ping.contains("Broadcast from ")|| ping.contains("Message from"))
+                              if(ping.contains("Broadcast from "))
                               {
                                 System.out.println(ping);
                               }
 
+                              if(ping.contains("Message from"))
+                              {
+                                String encryptedMsg = (ping.split(":")[1]).replaceAll(" ","");
+                                try
+                                {
+                                  PublicKey pkey = Peer.fetchPublicKey(friend);
+                                  String decryptMessage = Peer.decryptMessage(encryptedMsg, pkey);
+                                  System.out.println(friend+":"+decryptMessage);
+                                }
+                                catch(Exception e)
+                              {
+                                System.out.println("Error while decrypting");
+                                e.printStackTrace();
+                              }
+
+                              }
 
 
 												}
@@ -496,15 +537,28 @@ class PongListener extends Thread
               Peer.myHash(friend,p);
 						}
 
-            else if(recdData.contains("HelloAck"))
+            else if(recdData.contains("HelloAck")||recdData.contains("Broadcast from "))
 						{
 							System.out.println(recdData);
 						}
 
-            else if(recdData.contains("Broadcast from ")||recdData.contains("Message from"))
+            else if(recdData.contains("Message from"))
             {
-              System.out.println(recdData);
+              String encryptedMsg = (recdData.split(":")[1]).replaceAll(" ","");
+              try
+              {
+                PublicKey pkey = Peer.fetchPublicKey(friend);
+                String decryptMessage = Peer.decryptMessage(encryptedMsg, pkey);
+                System.out.println(friend+":"+decryptMessage);
+              }
+              catch(Exception e)
+            {
+              System.out.println("Error while decrypting");
+              e.printStackTrace();
             }
+
+            }
+
 
 
 
@@ -566,22 +620,29 @@ class CommandListener extends Thread
                             }
                           }
                         }
-                        System.out.println("NEW USERS IN THE CHAT ROOM ARE - "+newUserList);
-                        System.out.println("How many of them do you want to connect with?");
-                        int n =scanner.nextInt();
-                        String catchEmpty = scanner.nextLine();
-                        for (int i=0;i<n;i++)
+                        if (!newUserList.equals(""))
                         {
-                          System.out.println("Enter a name you want to connect with");
-                          String friend = scanner.nextLine();
-                          if(newPortNumbers.contains(friend))
+                          System.out.println("NEW USERS IN THE CHAT ROOM ARE - "+newUserList);
+                          System.out.println("How many of them do you want to connect with?");
+                          int n =scanner.nextInt();
+                          String catchEmpty = scanner.nextLine();
+                          for (int i=0;i<n;i++)
                           {
-                            String temp = newPortNumbers.split(friend+":")[1];
-                            String friendPort = temp.split(",")[0];
-                            Integer connect_port = Integer.parseInt(friendPort);
-                            System.out.println("Your friend "+friend+ " is at "+friendPort);
-                            Peer.connect(connect_port,Peer.myListenPort);
+                            System.out.println("Enter a name you want to connect with");
+                            String friend = scanner.nextLine();
+                            if(newPortNumbers.contains(friend))
+                            {
+                              String temp = newPortNumbers.split(friend+":")[1];
+                              String friendPort = temp.split(",")[0];
+                              Integer connect_port = Integer.parseInt(friendPort);
+                              System.out.println("Your friend "+friend+ " is at "+friendPort);
+                              Peer.connect(connect_port,Peer.myListenPort);
+                            }
                           }
+                        }
+                        else
+                        {
+                          System.out.println("No new users");
                         }
                       }
                       catch(IOException e) {}
@@ -618,17 +679,19 @@ class CommandListener extends Thread
                       String meta = details.split("@ ")[1];
                       String friend = meta.split(" ",2)[0];
                       String message = meta.split(" ",2)[1];
-
                       Socket t = Peer.fetchSocket(friend);
+
                         try
                         {
+                            String encryptedMsg = Peer.encryptMessage(message, Peer.privateKey);
                             PrintWriter pOut = new PrintWriter(t.getOutputStream(), true);
-                            pOut.write("Message from "+Peer.name+": "+message+"\n");
+                            pOut.write("Message from "+Peer.name+": "+encryptedMsg+"\n");
                             pOut.flush();
 
                         }
                         catch (NullPointerException e){}
                         catch (IOException e) {}
+                        catch (Exception e) {System.out.println("Error while encrypting");}
 
                     } // End of If for broadcast
 
