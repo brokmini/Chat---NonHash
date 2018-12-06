@@ -11,12 +11,24 @@ import java.util.Hashtable;
 import java.util.Enumeration;
 import java.util.Iterator;
 import java.util.Set;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.security.PrivateKey;
+import java.security.PublicKey;
+import java.util.Base64;
+import java.util.HashMap;
+import java.util.Map;
+import javax.crypto.Cipher;
+import java.security.GeneralSecurityException;
+import java.security.KeyFactory;
+import java.security.spec.X509EncodedKeySpec;
 
 public class Peer
 {
-  static Hashtable<String,Socket> hashtable = new Hashtable<String,Socket>();
+  static Hashtable<String,PeerDetails> hashtable = new Hashtable<String,PeerDetails>();
   static String name;
   static int myListenPort;
+  static PublicKey publicKey;
   public static void main(String[] args) throws IOException
   {
         File file = new File("peers.csv");
@@ -24,6 +36,26 @@ public class Peer
         PrintWriter pw = new PrintWriter(new FileWriter(file, true));
         Scanner scanner = new Scanner(System.in);
         String line = reader.readLine();
+
+        PrivateKey privateKey = null;
+        publicKey = null;
+        try
+        {
+        Map<String, Object> keys = getRSAKeys();
+        privateKey = (PrivateKey) keys.get("private");
+        publicKey = (PublicKey) keys.get("public");
+        }
+        catch(Exception e) {}
+
+        /*try
+        {
+        String plainText = "Hello World!";
+        String encryptedText = encryptMessage(plainText, privateKey);
+        String descryptedText = decryptMessage(encryptedText, newPub);
+        System.out.println("input:" + plainText);
+        System.out.println("encrypted:" + encryptedText);
+        System.out.println("decrypted:" + descryptedText);
+      } catch(Exception e) {}*/
 
         if (line==null || line.equals(""))
         {
@@ -109,6 +141,56 @@ public class Peer
   cl.start();
 
   } //End of Main function
+  //******************************************************************************************************************************************
+  private static Map<String,Object> getRSAKeys() throws Exception
+  {
+  KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
+  keyPairGenerator.initialize(2048);
+  KeyPair keyPair = keyPairGenerator.generateKeyPair();
+  PrivateKey privateKey = keyPair.getPrivate();
+  PublicKey publicKey = keyPair.getPublic();
+  Map<String, Object> keys = new HashMap<String,Object>();
+  keys.put("private", privateKey);
+  keys.put("public", publicKey);
+  return keys;
+  }
+
+private static String decryptMessage(String encryptedText, PublicKey publicKey) throws Exception
+{
+    Cipher cipher = Cipher.getInstance("RSA");
+    cipher.init(Cipher.DECRYPT_MODE, publicKey);
+    return new String(cipher.doFinal(Base64.getDecoder().decode(encryptedText)));
+}
+
+// Encrypt using RSA private key
+
+private static String encryptMessage(String plainText, PrivateKey privateKey) throws Exception
+{
+    Cipher cipher = Cipher.getInstance("RSA");
+    cipher.init(Cipher.ENCRYPT_MODE, privateKey);
+    return Base64.getEncoder().encodeToString(cipher.doFinal(plainText.getBytes()));
+}
+
+public static String savePublicKey(PublicKey publicKey) {
+    byte[] encodedPublicKey = publicKey.getEncoded();
+    String b64PublicKey = Base64.getEncoder().encodeToString(encodedPublicKey);
+    return b64PublicKey;
+}
+
+public static PublicKey retrievePublicKey(String keyString)
+{
+  PublicKey pubKey = null;
+  try
+  {
+    KeyFactory kf = KeyFactory.getInstance("RSA");
+    X509EncodedKeySpec keySpecX509 = new X509EncodedKeySpec(Base64.getDecoder().decode(keyString));
+    pubKey = (PublicKey) kf.generatePublic(keySpecX509);
+  } catch(Exception e) { System.out.println("Error in converting back to key");}
+
+
+  return pubKey;
+}
+
 
   //**********************************************************************************************************************************************
 	//function that is called when a new node connects to existing node in the network
@@ -117,15 +199,25 @@ public class Peer
 				try
 				{
 				Socket socket = new Socket("localhost", port);
+        System.out.println("I have connected "+socket);
 				PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
-				out.write("CONNECTED WITH "+Peer.name+"\n");
+        out.write("CONNECTED WITH "+Peer.name+" #### "+Peer.savePublicKey(Peer.publicKey)+"\n");
 				out.flush();
+
 
         BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
         String recdData = in.readLine();
-        System.out.println(recdData);
-				String username = recdData.split("CONNECTED WITH")[1];
-        Peer.myHash(username,socket);
+        //System.out.println(recdData);
+
+        String meta = recdData.split("CONNECTED WITH ")[1];
+        String username= meta.split(" #### ")[0];
+        String recdkey = meta.split(" #### ")[1];
+        System.out.println(recdData.split(" #### ")[0]);
+
+        PeerDetails pd = new PeerDetails();
+        pd.socket=socket;
+        pd.pubKey=Peer.retrievePublicKey(recdkey);
+        Peer.myHash(username,pd);
 				PingListener p = new PingListener(socket,username);
 				p.start();
 				}
@@ -167,9 +259,9 @@ public static int pingStatus()
 }
 //**********************************************************************************************************************************************
 //function to hash neighbor details
-public static void myHash(String username,Socket s)
+public static void myHash(String username,PeerDetails p)
 {
-      				hashtable.put(username,s);
+      				hashtable.put(username,p);
 }
 //**********************************************************************************************************************************************
 //function to read neighbor details from hash
@@ -199,6 +291,7 @@ public static String readHash()
  public static Socket fetchSocket(String username)
  {
               Socket s = null;
+              PeerDetails p = new PeerDetails();
               Set<String> keys = hashtable.keySet();
               Iterator<String> itr = keys.iterator();
               while (itr.hasNext())
@@ -210,7 +303,8 @@ public static String readHash()
                 String username1=username.replaceAll(" ","");
                 if(key1.equals(username1))
                 {
-                  s= hashtable.get(key);
+                  p= hashtable.get(key);
+                  s= p.socket;
                 }
               }
         return s;
@@ -235,6 +329,12 @@ public static String readHash()
     }
 } // End of class Peer
 //**********************************************************************************************************************************************
+class PeerDetails
+{
+  Socket socket;
+  PublicKey pubKey;
+}
+//***********************************************************************************************************************************************
 //This thread actively listens for any nodes connecting to it
 class Listener extends Thread
 {
@@ -262,15 +362,14 @@ class Listener extends Thread
 									{
 										System.out.println("Looking out for new friends...");
 										clientSocket = serverSocket.accept();
-
+                    System.out.println("Listened and connected "+clientSocket);
                     PongListener l=new PongListener(clientSocket);
 										l.start();
 
                     //To advertise about self
 										PrintWriter out = new PrintWriter(clientSocket.getOutputStream(), true);
-										out.write("CONNECTED WITH "+Peer.name+"\n");
+										out.write("CONNECTED WITH "+Peer.name+" #### "+Peer.savePublicKey(Peer.publicKey)+"\n");
 										out.flush();
-
 
 									}
 									catch (IOException e)
@@ -340,6 +439,7 @@ class PingListener extends Thread
                               }
 
 
+
 												}
 									}//End of Try
 									catch (Exception e)
@@ -386,11 +486,17 @@ class PongListener extends Thread
 						if(recdData.contains("CONNECTED WITH "))
 						{
 							//Fetches details about a new node that connects with it and hashes the information
-      				friend = recdData.split("CONNECTED WITH ")[1];
-              Peer.myHash(friend,socket);
+      				String meta = recdData.split("CONNECTED WITH ")[1];
+              friend = meta.split(" #### ")[0];
+              System.out.println(recdData.split(" #### ")[0]);
+              String recdkey=recdData.split(" #### ")[1];
+              PeerDetails p = new PeerDetails();
+              p.socket = socket;
+              p.pubKey = Peer.retrievePublicKey(recdkey);
+              Peer.myHash(friend,p);
 						}
 
-						else if(recdData.contains("HelloAck"))
+            else if(recdData.contains("HelloAck"))
 						{
 							System.out.println(recdData);
 						}
@@ -399,6 +505,9 @@ class PongListener extends Thread
             {
               System.out.println(recdData);
             }
+
+
+
 					} // End of Try
 					catch(IOException e)
 					{
