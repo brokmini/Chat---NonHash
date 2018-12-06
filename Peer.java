@@ -16,6 +16,7 @@ public class Peer
 {
   static Hashtable<String,Socket> hashtable = new Hashtable<String,Socket>();
   static String name;
+  static int myListenPort;
   public static void main(String[] args) throws IOException
   {
         File file = new File("peers.csv");
@@ -32,6 +33,7 @@ public class Peer
           pw.write(name+",9000");
           pw.close();
           Integer listen_port = 9000;
+          myListenPort = 9000;
           Listener  listener= new Listener(listen_port);
           listener.start();
         }
@@ -73,7 +75,7 @@ public class Peer
             if (!(portNumbers.contains(Integer.toString(listen_port))))
               portSet=true;
           }
-
+          myListenPort = listen_port;
           reader.close();
           pw.write("\n"+name+","+Integer.toString(listen_port));
           pw.close();
@@ -203,7 +205,10 @@ public static String readHash()
               {
                 // Getting Key
                 String key = itr.next();
-                if(key.equals(username))
+
+                String key1 = key.replaceAll(" ","");
+                String username1=username.replaceAll(" ","");
+                if(key1.equals(username1))
                 {
                   s= hashtable.get(key);
                 }
@@ -218,7 +223,8 @@ public static String readHash()
                 while (itr.hasNext())
                 {
                   // Getting Key
-                  String key = itr.next();
+                  String key = (itr.next()).replaceAll(" ","");
+                  String username1 = username.replaceAll(" ","");
                   if(key.equals(username))
                   {
                     return 1;
@@ -328,6 +334,11 @@ class PingListener extends Thread
 																pong.flush();
 															}
 
+                              if(ping.contains("Broadcast from ")|| ping.contains("Message from"))
+                              {
+                                System.out.println(ping);
+                              }
+
 
 												}
 									}//End of Try
@@ -383,6 +394,11 @@ class PongListener extends Thread
 						{
 							System.out.println(recdData);
 						}
+
+            else if(recdData.contains("Broadcast from ")||recdData.contains("Message from"))
+            {
+              System.out.println(recdData);
+            }
 					} // End of Try
 					catch(IOException e)
 					{
@@ -416,7 +432,6 @@ class CommandListener extends Thread
 			{
 				while(true)
 				{
-
 					Scanner scanner = new Scanner(System.in);
 					while(scanner.hasNextLine())
 					{
@@ -424,21 +439,92 @@ class CommandListener extends Thread
 
 								if(command.equals("find friend"))
 										{
-                        System.out.println("NEW USERS - ");
-                      /*BufferedReader reader2 = new BufferedReader(new FileReader("peers.csv"));
-                      String newPortNumbers=""; String newUserList="";
-                      while ((line = reader2.readLine()) != null)
+                      String line="";
+                      try
                       {
-                        if((isFriend(line.split(",")[0]))==0) //check if not one of your existing connections
+                        BufferedReader reader2 = new BufferedReader(new FileReader("peers.csv"));
+                        String newPortNumbers=""; String newUserList="";
+                        while ((line = reader2.readLine()) != null)
                         {
-                          newUserList = userList+ line.split(",")[0]+",";
-                          newPortNumbers= newPortNumbers + line.split(",")[0]+":"+line.split(",")[1]+",";
+                          String readname= line.split(",")[0];
+                          int flag = Peer.isFriend(readname);
+                          if(flag==0) //check if not one of your existing connections
+                          {
+                            if(!(readname.equals(Peer.name)))
+                            {
+                              newUserList = newUserList+ readname+",";
+                              newPortNumbers= newPortNumbers + readname+":"+line.split(",")[1]+",";
+                            }
+                          }
+                        }
+                        System.out.println("NEW USERS IN THE CHAT ROOM ARE - "+newUserList);
+                        System.out.println("How many of them do you want to connect with?");
+                        int n =scanner.nextInt();
+                        String catchEmpty = scanner.nextLine();
+                        for (int i=0;i<n;i++)
+                        {
+                          System.out.println("Enter a name you want to connect with");
+                          String friend = scanner.nextLine();
+                          if(newPortNumbers.contains(friend))
+                          {
+                            String temp = newPortNumbers.split(friend+":")[1];
+                            String friendPort = temp.split(",")[0];
+                            Integer connect_port = Integer.parseInt(friendPort);
+                            System.out.println("Your friend "+friend+ " is at "+friendPort);
+                            Peer.connect(connect_port,Peer.myListenPort);
+                          }
                         }
                       }
-                      System.out.println("NEW USERS - "+userList);*
-										}
+                      catch(IOException e) {}
 
-						}
+
+										} // End of IF for find friend
+
+                    if(command.contains("broadcast"))
+                    {
+                      String message = command.split("broadcast ")[1];
+                      String connectedUsers;
+                      connectedUsers = Peer.readHash();
+                      //if(connectedUsers.equals(""))
+                      String[] friendList = connectedUsers.split(",");
+                      for(int i =0;i<friendList.length;i++)
+                      {
+                        Socket t = Peer.fetchSocket(friendList[i]);
+                        try
+                        {
+                            PrintWriter pOut = new PrintWriter(t.getOutputStream(), true);
+                            pOut.write("Broadcast from "+Peer.name+": "+message+"\n");
+                            pOut.flush();
+
+                        }
+                        catch (NullPointerException e){}
+                        catch (IOException e) {}
+                      }
+
+                    } // End of If for broadcast
+
+                    if(command.contains("chat"))
+                    {
+                      String details = command.split("chat ")[1];
+                      String meta = details.split("@ ")[1];
+                      String friend = meta.split(" ",2)[0];
+                      String message = meta.split(" ",2)[1];
+
+                      Socket t = Peer.fetchSocket(friend);
+                        try
+                        {
+                            PrintWriter pOut = new PrintWriter(t.getOutputStream(), true);
+                            pOut.write("Message from "+Peer.name+": "+message+"\n");
+                            pOut.flush();
+
+                        }
+                        catch (NullPointerException e){}
+                        catch (IOException e) {}
+
+                    } // End of If for broadcast
+
+
+				}
 				}
 
 			}
