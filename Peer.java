@@ -22,6 +22,7 @@ import javax.crypto.Cipher;
 import java.security.GeneralSecurityException;
 import java.security.KeyFactory;
 import java.security.spec.X509EncodedKeySpec;
+import java.lang.StringBuffer;
 
 public class Peer
 {
@@ -241,6 +242,7 @@ public static int pingStatus()
             {
               //System.out.println(fetchSocket(friendList[i]));
               Socket t = fetchSocket(friendList[i]);
+              String f = friendList[i];
               try
               {
                   PrintWriter pOut = new PrintWriter(t.getOutputStream(), true);
@@ -388,7 +390,7 @@ class Listener extends Thread
 									{
 										System.out.println("Looking out for new friends...");
 										clientSocket = serverSocket.accept();
-                    PongListener l=new PongListener(clientSocket);
+                    PingListener l=new PingListener(clientSocket,"");
 										l.start();
 
                     //To advertise about self
@@ -444,12 +446,27 @@ class PingListener extends Thread
 									try
 									{
 										BufferedReader pIn = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+                    InputStream is = socket.getInputStream();
+                    //OutputStream out = null;
+                    //byte[] bytes = new byte[16*1024];
+                    //System.out.println("Number of bytes - "+ in.read(bytes));
 										String ping=pIn.readLine();
 										if (ping!= null && !ping.isEmpty())
-
 												{
+                            if(ping.contains("CONNECTED WITH "))
+                              {
+                                //Fetches details about a new node that connects with it and hashes the information
+                                String meta = ping.split("CONNECTED WITH ")[1];
+                                friend = meta.split(" #### ")[0];
+                                System.out.println(ping.split(" #### ")[0]);
+                                String recdkey=ping.split(" #### ")[1];
+                                PeerDetails p = new PeerDetails();
+                                p.socket = socket;
+                                p.pubKey = Peer.retrievePublicKey(recdkey);
+                                Peer.myHash(friend,p);
+                              }
 
-															if(ping.contains("Hello from"))
+														if(ping.contains("Hello from"))
 															{
                                 //friend = ping.split("Hello from")[1]
                                 System.out.println(ping);
@@ -458,7 +475,7 @@ class PingListener extends Thread
 																pong.flush();
 															}
 
-                              if(ping.contains("Broadcast from "))
+                              if(ping.contains("Broadcast from ")||ping.contains("HelloAck from"))
                               {
                                 System.out.println(ping);
                               }
@@ -480,6 +497,21 @@ class PingListener extends Thread
 
                               }
 
+                              if(ping.contains("$"))
+                              {
+                                String directoryName = "recv/"+Peer.name;
+                                File directory = new File(directoryName);
+                                if (! directory.exists()){
+                                  directory.mkdir();
+                                }
+                                PrintWriter writer = new PrintWriter("recv\\"+Peer.name+"\\"+friend+".txt", "UTF-8");
+                                String[] fileContents =ping.split("#");
+                                for(int i =0;i<fileContents.length;i++)
+                                {
+                                  writer.println(fileContents[i]);
+                                }
+                                writer.close();
+                              }
 
 												}
 									}//End of Try
@@ -504,82 +536,6 @@ class PingListener extends Thread
 
 								}
 				}
-}
-//******************************************************************************************************************************************************************
-class PongListener extends Thread
-{
-
-			Socket socket;
-      String friend;
-			public PongListener(Socket s)
-				{
-				socket=s;
-				}
-			public void run()
-			{
-				while(true)
-				{
-					try
-					{
-						BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-						String recdData=in.readLine();
-            //System.out.println("PONG LISTEN: "+recdData);
-						if(recdData.contains("CONNECTED WITH "))
-						{
-							//Fetches details about a new node that connects with it and hashes the information
-      				String meta = recdData.split("CONNECTED WITH ")[1];
-              friend = meta.split(" #### ")[0];
-              System.out.println(recdData.split(" #### ")[0]);
-              String recdkey=recdData.split(" #### ")[1];
-              PeerDetails p = new PeerDetails();
-              p.socket = socket;
-              p.pubKey = Peer.retrievePublicKey(recdkey);
-              Peer.myHash(friend,p);
-						}
-
-            else if(recdData.contains("HelloAck")||recdData.contains("Broadcast from "))
-						{
-							System.out.println(recdData);
-						}
-
-            else if(recdData.contains("Message from"))
-            {
-              String encryptedMsg = (recdData.split(":")[1]).replaceAll(" ","");
-              try
-              {
-                PublicKey pkey = Peer.fetchPublicKey(friend);
-                String decryptMessage = Peer.decryptMessage(encryptedMsg, pkey);
-                System.out.println(friend+":"+decryptMessage);
-              }
-              catch(Exception e)
-            {
-              System.out.println("Error while decrypting");
-              e.printStackTrace();
-            }
-
-            }
-
-
-
-
-					} // End of Try
-					catch(IOException e)
-					{
-							//In case a node that connected to it is dead
-							System.out.println("PongListener - "+friend +" has vanished");
-							Peer.hashtable.remove(friend);
-							try
-							{
-								Thread.sleep(Long.MAX_VALUE);
-							}
-							catch(InterruptedException q)
-							{
-								System.out.println("Cdnt Sleep "+q);
-
-							}
-					}
-				}
-			}
 }
 //****************************************************************************************************************************************************
 class CommandListener extends Thread
@@ -695,7 +651,34 @@ class CommandListener extends Thread
 
                     } // End of If for broadcast
 
+                    if (command.contains("send file"))
+                    {
+                      System.out.println("Whom do you want to send file to?");
+                      String friend = scanner.nextLine();
+                      Socket s = Peer.fetchSocket(friend);
 
+                      try
+                      {
+                        File file = new File("send\\apple.txt");
+                        BufferedReader br = new BufferedReader(new FileReader(file));
+                        StringBuilder sb = new StringBuilder();
+                        String line = br.readLine();
+                        while (line != null)
+                        {
+                          sb.append(line).append("#");
+                          line = br.readLine();
+                        }
+                        String fileAsString = sb.toString();
+                        PrintWriter pOut = new PrintWriter(s.getOutputStream(), true);
+                        pOut.write(fileAsString+"\n");
+                        pOut.flush();
+
+                      }
+                      catch(FileNotFoundException e){}
+                      catch(IOException e){}
+
+
+                    }
 				}
 				}
 
